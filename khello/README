@@ -1,0 +1,13 @@
+Demonstrates kernel-land and user-land communications via character device. This creates a kernel module which upon loading, creates a character device /dev/khello for comunications with userland.
+This version of the software uses an older method of creating device drivers.
+
+The software is developed and tested on CentOS 7 with kernel 3.10
+
+To observe the interactions, run:
+insmod khello.ko
+tail -f /var/log/messages
+
+Then try read and write operations on the created character device /dev/khello
+
+To unload the module, run 
+rmmod khello.ko

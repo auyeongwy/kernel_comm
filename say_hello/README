@@ -1,0 +1,10 @@
+Test application to read and write to /dev/khello
+
+The software is developed and tested on CentOS 7 with kernel 3.10
+
+To read:
+./say_hello read
+
+To write:
+./say_hello write <something>
+
