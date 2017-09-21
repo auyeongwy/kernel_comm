@@ -46,6 +46,11 @@ int main(int argc, char *argv[])
 		goto do_exit;	
 	}
 	
+	
+	/* Get pagesize. Not required in this example but done as an exercise. */
+	printf("Pagesize: %ld\n", sysconf(_SC_PAGE_SIZE));
+	
+	
 	/* Perform mmap. */
 	buf = mmap(NULL, s_stat.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	if((void*)buf == MAP_FAILED) {
