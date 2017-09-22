@@ -19,6 +19,9 @@
 #include <linux/mutex.h>
 #include <linux/cdev.h>
 #include <linux/poll.h>
+#include <linux/mm.h>
+#include <linux/slab.h>
+
 
 #define DEVICE_NAME "khello" /**< Name of the device in /dev */
 #define CLASS_NAME "khello_class" /**< Device class. */
@@ -35,6 +38,7 @@ static struct cdev g_c_device; /**< Character device. */
 static struct class *g_class = NULL; /**< Device class. */
 static struct device *g_device = NULL; /**< The device itself. */
 static unsigned char g_data[32]; /**< A simple data buffer to hold data sent to this device. */
+static unsigned char *g_data2 = NULL;
 static size_t g_data_size; /**< Size of data in g_data. */
 static DEFINE_MUTEX(g_mutex); /**< Mutex for thread-safety. */
 static int g_lock=0;
@@ -51,8 +55,21 @@ static ssize_t dev_read(struct file *p_file, char *p_buf, size_t p_size, loff_t 
 /**Writes data to the device. Implements the write function defined in linux/fs.h */
 static ssize_t dev_write(struct file *p_file, const char *p_buf, size_t p_size, loff_t *p_off);
 
-/** Returns results to a poll or select call. Implements the funciton defined in linux/fs.h  */
-unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_table);
+/** Returns results to a poll or select call. Implements the function defined in linux/fs.h  */
+static unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_table);
+
+/** Implements mmap operation. Implements the function defined in linux/fs.h  */
+static int dev_mmap(struct file *p_file, struct vm_area_struct *p_vma);
+
+/** Implements vma open operation. */
+static void khello_vma_open(struct vm_area_struct *p_vma);
+
+/** Implements vma close operation. */
+static void khello_vma_close(struct vm_area_struct *p_vma);
+
+/** Implements vma falut operation. */
+static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault);
+
 
 
 /** Defines the file_operations structure for device operations.
@@ -64,8 +81,22 @@ static struct file_operations g_fops =
 	.read = dev_read,
 	.write = dev_write,
 	.poll = dev_poll,
+	.mmap = dev_mmap,
 	.release = dev_release,
 };
+
+
+ 
+/** Defines functions for vm operations for mmap.
+ */
+static struct vm_operations_struct g_remap_vm_ops = 
+{
+    .open =  khello_vma_open,
+    .close = khello_vma_close,
+	.fault = khello_vma_fault,
+};
+
+
 
 
 /** Kernel module init funciton.
@@ -73,7 +104,7 @@ static struct file_operations g_fops =
  */
 static int __init hello_init(void)
 {
-	int result = 0, progress = 0; 
+	int result = -1, progress = 0; 
 	memset(g_data, 0 ,32);
 	g_data_size = 0;
 	mutex_init(&g_mutex);
@@ -111,12 +142,20 @@ static int __init hello_init(void)
 	++progress;
 	
 	printk(KERN_INFO "khello: device created\n");
+
+	/* Allocate page-aligned memory */
+	if((g_data2 = (unsigned char*)kmalloc(32, GFP_KERNEL)) == NULL) {
+		printk(KERN_ALERT "khello: allocate memory error\n");
+		goto do_exit;
+	}
+	++progress;
 	
 	
+	result = 0;
 do_exit:
 	/* Device creation failure so clean up. */
 	if(result < 0) {
-		if(progress == 2) {
+		if(progress >= 2) {
 			class_destroy(g_class);
 			progress = 1;
 		}
@@ -143,6 +182,7 @@ static void __exit hello_cleanup(void)
 	cdev_del(&g_c_device);
 	unregister_chrdev_region(g_dev_num, 1);
 	mutex_destroy(&g_mutex);
+	kfree(g_data2);
     printk(KERN_INFO "khello: Cleanup and exit\n");
 }
 
@@ -197,7 +237,7 @@ static ssize_t dev_write(struct file *p_file, const char *p_buf, size_t p_size, 
 
 
 
-unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_table)
+static unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_table)
 {
 	unsigned int result;
 
@@ -208,6 +248,53 @@ unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_table)
 	
 	return result;
 }
+
+
+
+static int dev_mmap(struct file *p_file, struct vm_area_struct *p_vma)
+{
+	int result;
+	
+	p_vma->vm_ops = &g_remap_vm_ops;
+	p_vma->vm_flags |= (VM_DONTEXPAND | VM_DONTDUMP);
+	//p_vma->vm_private_data = g_data;
+	if((result = remap_pfn_range(p_vma, p_vma->vm_start, (unsigned long)g_data, 32, p_vma->vm_page_prot)) < 0) {
+		printk(KERN_ALERT "khello: Remap failed\n");
+		return result;
+	}
+	khello_vma_open(p_vma);
+    return 0;
+}
+
+
+
+static void khello_vma_open(struct vm_area_struct *p_vma)
+{
+	printk(KERN_INFO "khello: Mmap open\n");
+}
+
+
+
+static void khello_vma_close(struct vm_area_struct *p_vma)
+{
+	printk(KERN_INFO "khello: Mmap close: %s\n", g_data);
+}
+
+
+
+static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault)
+{
+	struct page *page;
+	
+	printk(KERN_INFO "In fault\n");
+	
+	page = virt_to_page(g_data);
+	get_page(page);
+	p_fault->page = page;
+	return 0;
+}
+
+
 
 
 
