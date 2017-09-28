@@ -68,7 +68,7 @@ static void khello_vma_open(struct vm_area_struct *p_vma);
 static void khello_vma_close(struct vm_area_struct *p_vma);
 
 /** Implements vma falut operation. */
-static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault);
+//static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault);
 
 
 
@@ -93,7 +93,6 @@ static struct vm_operations_struct g_remap_vm_ops =
 {
     .open =  khello_vma_open,
     .close = khello_vma_close,
-	.fault = khello_vma_fault,
 };
 
 
@@ -144,7 +143,7 @@ static int __init hello_init(void)
 	printk(KERN_INFO "khello: device created\n");
 
 	/* Allocate page-aligned memory */
-	if((g_data2 = (unsigned char*)kmalloc(32, GFP_KERNEL)) == NULL) {
+	if((g_data2 = (unsigned char*)kmalloc(PAGE_SIZE, GFP_KERNEL)) == NULL) {
 		printk(KERN_ALERT "khello: allocate memory error\n");
 		goto do_exit;
 	}
@@ -182,7 +181,10 @@ static void __exit hello_cleanup(void)
 	cdev_del(&g_c_device);
 	unregister_chrdev_region(g_dev_num, 1);
 	mutex_destroy(&g_mutex);
-	kfree(g_data2);
+	if(g_data2 != NULL) {
+		printk(KERN_INFO "khello g_data2: %s\n", g_data2);
+		kfree(g_data2);
+	}
     printk(KERN_INFO "khello: Cleanup and exit\n");
 }
 
@@ -253,15 +255,20 @@ static unsigned int dev_poll(struct file *p_file, struct poll_table_struct *p_ta
 
 static int dev_mmap(struct file *p_file, struct vm_area_struct *p_vma)
 {
-	int result;
+	unsigned long size = p_vma->vm_end - p_vma->vm_start;
 	
-	p_vma->vm_ops = &g_remap_vm_ops;
-	p_vma->vm_flags |= (VM_DONTEXPAND | VM_DONTDUMP);
-	//p_vma->vm_private_data = g_data;
-	if((result = remap_pfn_range(p_vma, p_vma->vm_start, (unsigned long)g_data, 32, p_vma->vm_page_prot)) < 0) {
-		printk(KERN_ALERT "khello: Remap failed\n");
-		return result;
+	
+	printk(KERN_INFO "khello: requested %ld bytes\n", size);
+	if(size > PAGE_SIZE) {
+		printk(KERN_INFO "khello: requested more than %ld bytes. Error.\n", PAGE_SIZE);
+		return -EAGAIN;
 	}
+	
+	if(remap_pfn_range(p_vma, p_vma->vm_start, __pa((void*)g_data2)>>PAGE_SHIFT, size, p_vma->vm_page_prot)) {
+		printk(KERN_ALERT "khello: Remap failed\n");
+		return -EAGAIN;
+	}
+	p_vma->vm_ops = &g_remap_vm_ops;
 	khello_vma_open(p_vma);
     return 0;
 }
@@ -277,22 +284,34 @@ static void khello_vma_open(struct vm_area_struct *p_vma)
 
 static void khello_vma_close(struct vm_area_struct *p_vma)
 {
-	printk(KERN_INFO "khello: Mmap close: %s\n", g_data);
+	printk(KERN_INFO "khello: Mmap close: %s\n", g_data2);
 }
 
 
 
-static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault)
-{
-	struct page *page;
-	
-	printk(KERN_INFO "In fault\n");
-	
-	page = virt_to_page(g_data);
-	get_page(page);
-	p_fault->page = page;
-	return 0;
-}
+// static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault)
+// {
+// 	struct page *page;
+// 	unsigned char *buf;
+// 	
+// 	printk(KERN_INFO "In fault\n");
+// 	
+// 	buf = (unsigned char*)p_vma->vm_private_data;
+// 	if(!buf) {
+// 		printk(KERN_ALERT "khello: No data\n");
+// 		return 0;
+// 	}
+// 	printk(KERN_INFO "In fault 2\n");
+// 	page = virt_to_page(p_vma->vm_private_data);
+// 	if(page == NULL) {
+// 		printk(KERN_ALERT "khello: No page\n");
+// 		return 0;		
+// 	}
+// 	printk(KERN_INFO "In fault 3\n");
+// 	get_page(page);
+// 	p_fault->page = page;
+// 	return 0;
+// }
 
 
 

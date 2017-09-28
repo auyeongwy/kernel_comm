@@ -42,12 +42,13 @@ int main(int argc, char *argv[])
 	buf = mmap(NULL, 32, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	if((void*)buf == MAP_FAILED) {
 		process_perror(errno);
+		printf("Mmap error\n");
 		buf = NULL;
 		goto do_exit;
 	}
 	
 	/* Perform a write */
-	memmove(buf, "haha", 4);
+	memcpy(buf, "haha", 4);
 	buf[4] = 0;
 
 	
