@@ -67,8 +67,8 @@ static void khello_vma_open(struct vm_area_struct *p_vma);
 /** Implements vma close operation. */
 static void khello_vma_close(struct vm_area_struct *p_vma);
 
-/** Implements vma falut operation. */
-//static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault);
+/** Implements vma falut operation. Currently not used. */
+static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault);
 
 
 
@@ -87,7 +87,7 @@ static struct file_operations g_fops =
 
 
  
-/** Defines functions for vm operations for mmap.
+/** Defines functions for vm operations for mmap operations.
  */
 static struct vm_operations_struct g_remap_vm_ops = 
 {
@@ -289,29 +289,21 @@ static void khello_vma_close(struct vm_area_struct *p_vma)
 
 
 
-// static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault)
-// {
-// 	struct page *page;
-// 	unsigned char *buf;
-// 	
-// 	printk(KERN_INFO "In fault\n");
-// 	
-// 	buf = (unsigned char*)p_vma->vm_private_data;
-// 	if(!buf) {
-// 		printk(KERN_ALERT "khello: No data\n");
-// 		return 0;
-// 	}
-// 	printk(KERN_INFO "In fault 2\n");
-// 	page = virt_to_page(p_vma->vm_private_data);
-// 	if(page == NULL) {
-// 		printk(KERN_ALERT "khello: No page\n");
-// 		return 0;		
-// 	}
-// 	printk(KERN_INFO "In fault 3\n");
-// 	get_page(page);
-// 	p_fault->page = page;
-// 	return 0;
-// }
+static int khello_vma_fault(struct vm_area_struct *p_vma, struct vm_fault *p_fault)
+{
+	struct page *page;
+	
+	printk(KERN_INFO "In fault\n");	
+	page = virt_to_page(g_data2);
+	if(page == NULL) {
+		printk(KERN_ALERT "khello: No page\n");
+		return 0;		
+	}
+	printk(KERN_INFO "Got page\n");
+	get_page(page);
+	p_fault->page = page;
+	return 0;
+}
 
 
 
